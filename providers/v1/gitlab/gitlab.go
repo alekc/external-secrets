@@ -312,38 +312,29 @@ func (g *gitlabBase) GetSecret(_ context.Context, ref esv1.ExternalSecretDataRem
 		vopts = &gitlab.GetProjectVariableOptions{Filter: &gitlab.VariableFilter{EnvironmentScope: g.store.Environment}}
 	}
 
-	var result []byte
-
 	// _Note_: getVariables potentially alters vopts environment variable.
-	data, resp, getErr := g.getVariables(ref, vopts)
+	data, _, getErr := g.getVariables(ref, vopts)
 	if getErr == nil {
-		if resp.StatusCode >= 300 {
-			return nil, fmt.Errorf("error getting key %s from GitLab: %s", ref.Key, resp.Status)
-		}
 		return extractVariable(ref, data.Value)
 	}
 
 	// if the error is 404, try to get the secret from one of the groups (if any)
-	if resp != nil && resp.StatusCode == http.StatusNotFound {
+	if errors.Is(getErr, gitlab.ErrNotFound) {
 		// load groupIds from the `InheritFromGroups` property
-		if err := g.ResolveGroupIds(); err != nil {
+		if err := g.ResolveGroupIDs(); err != nil {
 			return nil, err
 		}
 		for i := len(g.store.GroupIDs) - 1; i >= 0; i-- {
 			groupID := g.store.GroupIDs[i]
-			groupVar, resp, err := g.getGroupVariables(groupID, ref, gopts)
+			groupVar, _, err := g.getGroupVariables(groupID, ref, gopts)
 			if err != nil {
 				// if the error is 404, try to get the secret from the next group
-				if resp != nil && resp.StatusCode == http.StatusNotFound {
+				if errors.Is(err, gitlab.ErrNotFound) {
 					continue
 				}
 				return nil, err
 			}
-			if resp.StatusCode >= 300 {
-				return nil, fmt.Errorf("error getting key %s from GitLab group: %s", ref.Key, resp.Status)
-			}
-			result, err = extractVariable(ref, groupVar.Value)
-			return result, err
+			return extractVariable(ref, groupVar.Value)
 		}
 		// if no group variables were found, return an 404 error
 		return nil, getErr

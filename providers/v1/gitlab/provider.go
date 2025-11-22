@@ -134,21 +134,27 @@ func (g *gitlabBase) getClient(ctx context.Context, provider *esv1.GitlabProvide
 }
 
 func (g *gitlabBase) getVariables(ref esv1.ExternalSecretDataRemoteRef, vopts *gitlab.GetProjectVariableOptions) (*gitlab.ProjectVariable, *gitlab.Response, error) {
+	// First attempt to get the variable
 	data, resp, err := g.projectVariablesClient.GetVariable(g.store.ProjectID, ref.Key, vopts)
 	metrics.ObserveAPICall(constants.ProviderGitLab, constants.CallGitLabProjectVariableGet, err)
+
+	// If successful, return immediately
+	if err == nil {
+		return data, resp, nil
+	}
+
+	// If not a "not found" error or environment is already wildcard, return the error
+	if !errors.Is(err, gitlab.ErrNotFound) || isEmptyOrWildcard(g.store.Environment) {
+		return nil, resp, err
+	}
+
+	// Retry with wildcard environment scope
+	vopts.Filter.EnvironmentScope = "*"
+	data, resp, err = g.projectVariablesClient.GetVariable(g.store.ProjectID, ref.Key, vopts)
+	metrics.ObserveAPICall(constants.ProviderGitLab, constants.CallGitLabProjectVariableGet, err)
+
 	if err != nil {
-		// if the store has a specific environment set and the variable is not found,
-		// we try to fetch the variable with an environment scope of "*"
-		if resp != nil && resp.StatusCode == http.StatusNotFound && !isEmptyOrWildcard(g.store.Environment) {
-			vopts.Filter.EnvironmentScope = "*"
-			data, resp, err = g.projectVariablesClient.GetVariable(g.store.ProjectID, ref.Key, vopts)
-			metrics.ObserveAPICall(constants.ProviderGitLab, constants.CallGitLabProjectVariableGet, err)
-			if err != nil || resp == nil {
-				return nil, resp, fmt.Errorf("error getting variable %s from GitLab: %w", ref.Key, err)
-			}
-		} else {
-			return nil, resp, err
-		}
+		return nil, resp, fmt.Errorf("error getting variable %s from GitLab (including wildcard retry): %w", ref.Key, err)
 	}
 
 	return data, resp, nil
