@@ -312,7 +312,7 @@ func (g *gitlabBase) GetSecret(_ context.Context, ref esv1.ExternalSecretDataRem
 		vopts = &gitlab.GetProjectVariableOptions{Filter: &gitlab.VariableFilter{EnvironmentScope: g.store.Environment}}
 	}
 
-	data, _, err := g.getVariables(ref, vopts)
+	data, err := g.getVariables(ref, vopts)
 	if err == nil {
 		return extractVariable(ref, data.Value)
 	}
