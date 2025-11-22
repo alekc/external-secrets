@@ -149,8 +149,8 @@ func (g *gitlabBase) getVariables(ref esv1.ExternalSecretDataRemoteRef, vopts *g
 	}
 
 	// Retry with wildcard environment scope
-	vopts.Filter.EnvironmentScope = "*"
-	data, resp, err = g.projectVariablesClient.GetVariable(g.store.ProjectID, ref.Key, vopts)
+	opts := &gitlab.GetProjectVariableOptions{Filter: &gitlab.VariableFilter{EnvironmentScope: "*"}}
+	data, resp, err = g.projectVariablesClient.GetVariable(g.store.ProjectID, ref.Key, opts)
 	metrics.ObserveAPICall(constants.ProviderGitLab, constants.CallGitLabProjectVariableGet, err)
 
 	if err != nil {
