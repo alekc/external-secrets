@@ -86,6 +86,21 @@ func BuildRESTConfigFromKubernetesConnection(
 		CAData:   ca,
 	}
 
+	if err := applyInlineAuth(ctx, ctrlClient, coreV1, storeKind, esNamespace, auth, cfg); err != nil {
+		return nil, err
+	}
+	return cfg, nil
+}
+
+// applyInlineAuth validates that exactly one auth method is set and populates cfg accordingly.
+func applyInlineAuth(
+	ctx context.Context,
+	ctrlClient kclient.Client,
+	coreV1 typedcorev1.CoreV1Interface,
+	storeKind, esNamespace string,
+	auth *esv1.KubernetesAuth,
+	cfg *rest.Config,
+) error {
 	set := 0
 	if auth.Token != nil {
 		set++
@@ -97,34 +112,33 @@ func BuildRESTConfigFromKubernetesConnection(
 		set++
 	}
 	if set > 1 {
-		return nil, errors.New("multiple auth methods provided: set exactly one of Token, ServiceAccount, or Cert")
+		return errors.New("multiple auth methods provided: set exactly one of Token, ServiceAccount, or Cert")
 	}
 
 	switch {
 	case auth.Token != nil:
 		token, err := fetchKubernetesSecretKey(ctx, ctrlClient, storeKind, esNamespace, auth.Token.BearerToken)
 		if err != nil {
-			return nil, fmt.Errorf("could not fetch Auth.Token.BearerToken: %w", err)
+			return fmt.Errorf("could not fetch Auth.Token.BearerToken: %w", err)
 		}
 		cfg.BearerToken = string(token)
 	case auth.ServiceAccount != nil:
 		token, err := serviceAccountToken(ctx, coreV1, storeKind, esNamespace, auth.ServiceAccount)
 		if err != nil {
-			return nil, fmt.Errorf("could not fetch Auth.ServiceAccount: %w", err)
+			return fmt.Errorf("could not fetch Auth.ServiceAccount: %w", err)
 		}
 		cfg.BearerToken = string(token)
 	case auth.Cert != nil:
 		key, cert, err := clientCertKeyFromSecrets(ctx, ctrlClient, storeKind, esNamespace, auth.Cert)
 		if err != nil {
-			return nil, fmt.Errorf("could not fetch client key and cert: %w", err)
+			return fmt.Errorf("could not fetch client key and cert: %w", err)
 		}
 		cfg.TLSClientConfig.KeyData = key
 		cfg.TLSClientConfig.CertData = cert
 	default:
-		return nil, errors.New("no auth provider given")
+		return errors.New("no auth provider given")
 	}
-
-	return cfg, nil
+	return nil
 }
 
 // fetchKubernetesSecretKey resolves a SecretKeySelector and returns its value as bytes.
