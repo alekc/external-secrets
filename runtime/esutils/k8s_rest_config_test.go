@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package kubernetes
+package esutils
 
 import (
 	"context"
@@ -71,7 +71,7 @@ users:
 	serverURL = "https://my.test.tld"
 )
 
-func TestSetAuth(t *testing.T) {
+func TestBuildRESTConfigFromKubernetesConnection(t *testing.T) {
 	type fields struct {
 		kube          kclient.Client
 		kubeclientset typedcorev1.CoreV1Interface
@@ -379,6 +379,98 @@ func TestSetAuth(t *testing.T) {
 			wantErr: true,
 		},
 		{
+			name: "should error when Token and ServiceAccount are both set",
+			fields: fields{
+				namespace: "default",
+				kube:      fclient.NewClientBuilder().Build(),
+				store: &esv1.KubernetesProvider{
+					Server: esv1.KubernetesServer{
+						URL:      serverURL,
+						CABundle: []byte(caCert),
+					},
+					Auth: &esv1.KubernetesAuth{
+						Token: &esv1.TokenAuth{
+							BearerToken: v1.SecretKeySelector{Name: "tok", Key: "token"},
+						},
+						ServiceAccount: &v1.ServiceAccountSelector{Name: "my-sa"},
+					},
+				},
+			},
+			want:    nil,
+			wantErr: true,
+		},
+		{
+			name: "should error when Token and Cert are both set",
+			fields: fields{
+				namespace: "default",
+				kube:      fclient.NewClientBuilder().Build(),
+				store: &esv1.KubernetesProvider{
+					Server: esv1.KubernetesServer{
+						URL:      serverURL,
+						CABundle: []byte(caCert),
+					},
+					Auth: &esv1.KubernetesAuth{
+						Token: &esv1.TokenAuth{
+							BearerToken: v1.SecretKeySelector{Name: "tok", Key: "token"},
+						},
+						Cert: &esv1.CertAuth{
+							ClientCert: v1.SecretKeySelector{Name: "mycert", Key: "cert"},
+							ClientKey:  v1.SecretKeySelector{Name: "mycert", Key: "key"},
+						},
+					},
+				},
+			},
+			want:    nil,
+			wantErr: true,
+		},
+		{
+			name: "should error when ServiceAccount and Cert are both set",
+			fields: fields{
+				namespace: "default",
+				kube:      fclient.NewClientBuilder().Build(),
+				store: &esv1.KubernetesProvider{
+					Server: esv1.KubernetesServer{
+						URL:      serverURL,
+						CABundle: []byte(caCert),
+					},
+					Auth: &esv1.KubernetesAuth{
+						ServiceAccount: &v1.ServiceAccountSelector{Name: "my-sa"},
+						Cert: &esv1.CertAuth{
+							ClientCert: v1.SecretKeySelector{Name: "mycert", Key: "cert"},
+							ClientKey:  v1.SecretKeySelector{Name: "mycert", Key: "key"},
+						},
+					},
+				},
+			},
+			want:    nil,
+			wantErr: true,
+		},
+		{
+			name: "should error when all three auth methods are set",
+			fields: fields{
+				namespace: "default",
+				kube:      fclient.NewClientBuilder().Build(),
+				store: &esv1.KubernetesProvider{
+					Server: esv1.KubernetesServer{
+						URL:      serverURL,
+						CABundle: []byte(caCert),
+					},
+					Auth: &esv1.KubernetesAuth{
+						Token: &esv1.TokenAuth{
+							BearerToken: v1.SecretKeySelector{Name: "tok", Key: "token"},
+						},
+						ServiceAccount: &v1.ServiceAccountSelector{Name: "my-sa"},
+						Cert: &esv1.CertAuth{
+							ClientCert: v1.SecretKeySelector{Name: "mycert", Key: "cert"},
+							ClientKey:  v1.SecretKeySelector{Name: "mycert", Key: "key"},
+						},
+					},
+				},
+			},
+			want:    nil,
+			wantErr: true,
+		},
+		{
 			name: "should read config from secret",
 			fields: fields{
 				namespace: "default",
@@ -411,16 +503,22 @@ func TestSetAuth(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			k := &Client{
-				ctrlClientset: tt.fields.kubeclientset,
-				ctrlClient:    tt.fields.kube,
-				store:         tt.fields.store,
-				namespace:     tt.fields.namespace,
-				storeKind:     tt.fields.storeKind,
+			storeKind := tt.fields.storeKind
+			if storeKind == "" {
+				storeKind = esv1.SecretStoreKind
 			}
-			cfg, err := k.getAuth(context.Background())
+			cfg, err := BuildRESTConfigFromKubernetesConnection(
+				context.Background(),
+				tt.fields.kube,
+				tt.fields.kubeclientset,
+				storeKind,
+				tt.fields.namespace,
+				tt.fields.store.Server,
+				tt.fields.store.Auth,
+				tt.fields.store.AuthRef,
+			)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("BaseClient.setAuth() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("BuildRESTConfigFromKubernetesConnection() error = %v, wantErr %v", err, tt.wantErr)
 			}
 			assert.Equal(t, tt.want, cfg)
 		})
