@@ -471,6 +471,40 @@ func TestBuildRESTConfigFromKubernetesConnection(t *testing.T) {
 			wantErr: true,
 		},
 		{
+			name: "should error when authRef and inline auth are both set",
+			fields: fields{
+				namespace: "default",
+				kube: fclient.NewClientBuilder().WithObjects(&corev1.Secret{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "foobar",
+						Namespace: "default",
+					},
+					Data: map[string][]byte{
+						"config": []byte(authTestKubeConfig),
+						"token":  []byte("mytoken"),
+					},
+				}).Build(),
+				store: &esv1.KubernetesProvider{
+					Server: esv1.KubernetesServer{
+						URL:      serverURL,
+						CABundle: []byte(caCert),
+					},
+					Auth: &esv1.KubernetesAuth{
+						Token: &esv1.TokenAuth{
+							BearerToken: v1.SecretKeySelector{Name: "foobar", Key: "token"},
+						},
+					},
+					AuthRef: &v1.SecretKeySelector{
+						Name:      "foobar",
+						Namespace: new("default"),
+						Key:       "config",
+					},
+				},
+			},
+			want:    nil,
+			wantErr: true,
+		},
+		{
 			name: "should read config from secret",
 			fields: fields{
 				namespace: "default",

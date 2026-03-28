@@ -48,6 +48,9 @@ func BuildRESTConfigFromKubernetesConnection(
 	authRef *esmeta.SecretKeySelector,
 ) (*rest.Config, error) {
 	if authRef != nil {
+		if auth != nil {
+			return nil, errors.New("authRef and inline auth cannot both be set")
+		}
 		cfg, err := fetchKubernetesSecretKey(ctx, ctrlClient, storeKind, esNamespace, *authRef)
 		if err != nil {
 			return nil, err
