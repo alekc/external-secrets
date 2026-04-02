@@ -275,6 +275,15 @@ func extractValue(obj *unstructured.Unstructured, property string, fields []stri
 }
 
 // jsonBytesToMap converts a JSON byte slice to map[string][]byte.
+// String values are unwrapped (JSON quotes removed); non-string values
+// (objects, arrays, numbers, booleans) are kept as raw JSON bytes.
+//
+// When the input is valid JSON but not an object (e.g. a bare string
+// `"hello"` or an array `[1,2]`), it cannot be mapped to key/value
+// pairs. In that case the raw payload is returned under a single
+// "value" key. This is intentional: the input always originates from
+// extractValue which already validated it via json.Marshal, so a
+// non-object result is expected for non-map properties.
 func jsonBytesToMap(raw []byte) (map[string][]byte, error) {
 	var kv map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &kv); err != nil {

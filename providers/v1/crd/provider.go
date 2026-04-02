@@ -102,7 +102,7 @@ type Provider struct {
 	// Overridable in tests without a live cluster.
 	discoverFn func(cfg *rest.Config, res esv1.CRDProviderResource) (plural string, namespaced bool, err error)
 	// accessCheckFn verifies that the caller can read/list the resolved resource.
-	accessCheckFn func(cfg *rest.Config, res esv1.CRDProviderResource, plural, namespace string) error
+	accessCheckFn func(ctx context.Context, cfg *rest.Config, res esv1.CRDProviderResource, plural, namespace string) error
 }
 
 var _ esv1.Provider = &Provider{}
@@ -167,7 +167,7 @@ func (p *Provider) newClient(ctx context.Context, store esv1.GenericStore, kube 
 				UserName: fmt.Sprintf("system:serviceaccount:%s:%s", impersonateNS, provSpec.ServiceAccountRef.Name),
 			}
 		}
-		return p.newClientWithRESTConfig(store, cfg, targetNS)
+		return p.newClientWithRESTConfig(ctx, store, cfg, targetNS)
 	}
 
 	// Legacy mode: in-cluster API server + short-lived token for serviceAccountRef.
@@ -191,7 +191,7 @@ func (p *Provider) newClient(ctx context.Context, store esv1.GenericStore, kube 
 	authedCfg.ExecProvider = nil
 	authedCfg.Impersonate = rest.ImpersonationConfig{}
 
-	return p.newClientWithRESTConfig(store, authedCfg, targetNS)
+	return p.newClientWithRESTConfig(ctx, store, authedCfg, targetNS)
 }
 
 // Client holds the runtime state for a single SecretStore/ClusterSecretStore.
@@ -211,7 +211,7 @@ var _ esv1.SecretsClient = &Client{}
 
 // newClientWithRESTConfig builds the Client from a fully authenticated REST config.
 // Exposed for tests that inject a token or explicit connection config without a live cluster.
-func (p *Provider) newClientWithRESTConfig(store esv1.GenericStore, authedCfg *rest.Config, targetNamespace string) (esv1.SecretsClient, error) {
+func (p *Provider) newClientWithRESTConfig(ctx context.Context, store esv1.GenericStore, authedCfg *rest.Config, targetNamespace string) (esv1.SecretsClient, error) {
 	provSpec, err := getProvider(store)
 	if err != nil {
 		return nil, err
@@ -228,7 +228,7 @@ func (p *Provider) newClientWithRESTConfig(store esv1.GenericStore, authedCfg *r
 		accessNS = ""
 	}
 	if p.accessCheckFn != nil {
-		if err := p.accessCheckFn(authedCfg, provSpec.Resource, plural, accessNS); err != nil {
+		if err := p.accessCheckFn(ctx, authedCfg, provSpec.Resource, plural, accessNS); err != nil {
 			return nil, err
 		}
 	}
@@ -291,7 +291,7 @@ func discoverResourceFromCluster(cfg *rest.Config, res esv1.CRDProviderResource)
 	return "", false, fmt.Errorf("crd: kind %q not found in group/version %q", res.Kind, groupVersion)
 }
 
-func ensureResourceAccess(cfg *rest.Config, res esv1.CRDProviderResource, plural, namespace string) error {
+func ensureResourceAccess(ctx context.Context, cfg *rest.Config, res esv1.CRDProviderResource, plural, namespace string) error {
 	cs, err := kubernetes.NewForConfig(cfg)
 	if err != nil {
 		return fmt.Errorf("crd: failed to create kubernetes client for access review: %w", err)
@@ -310,7 +310,7 @@ func ensureResourceAccess(cfg *rest.Config, res esv1.CRDProviderResource, plural
 			},
 		}
 
-		resp, err := cs.AuthorizationV1().SelfSubjectAccessReviews().Create(context.Background(), review, metav1.CreateOptions{})
+		resp, err := cs.AuthorizationV1().SelfSubjectAccessReviews().Create(ctx, review, metav1.CreateOptions{})
 		if err != nil {
 			return fmt.Errorf("crd: failed to verify %q permission for resource %q: %w", verb, plural, err)
 		}

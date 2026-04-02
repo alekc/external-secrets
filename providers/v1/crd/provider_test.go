@@ -411,7 +411,7 @@ func TestNewClientInternal(t *testing.T) {
 	})
 
 	t.Run("newClientWithRESTConfig returns getProvider error on nil store", func(t *testing.T) {
-		_, err := providerWithFakeDiscover("widgets").newClientWithRESTConfig(nil, defaultRESTCfg(), "default")
+		_, err := providerWithFakeDiscover("widgets").newClientWithRESTConfig(context.Background(), nil, defaultRESTCfg(), "default")
 		if !errors.Is(err, errMissingStore) {
 			t.Fatalf("newClientWithRESTConfig() error = %v, want %v", err, errMissingStore)
 		}
@@ -419,21 +419,21 @@ func TestNewClientInternal(t *testing.T) {
 
 	t.Run("discovery error is propagated", func(t *testing.T) {
 		discErr := fmt.Errorf("group/version not registered")
-		_, err := (&Provider{discoverFn: fakeDiscoverErr(discErr)}).newClientWithRESTConfig(store, defaultRESTCfg(), "default")
+		_, err := (&Provider{discoverFn: fakeDiscoverErr(discErr)}).newClientWithRESTConfig(context.Background(), store, defaultRESTCfg(), "default")
 		if !errors.Is(err, discErr) {
 			t.Fatalf("newClientWithRESTConfig() error = %v, want %v", err, discErr)
 		}
 	})
 
 	t.Run("returns dynamic client creation error on bad host", func(t *testing.T) {
-		_, err := providerWithFakeDiscover("widgets").newClientWithRESTConfig(store, &rest.Config{Host: "://bad-host", BearerToken: "tok"}, "default")
+		_, err := providerWithFakeDiscover("widgets").newClientWithRESTConfig(context.Background(), store, &rest.Config{Host: "://bad-host", BearerToken: "tok"}, "default")
 		if err == nil || !strings.Contains(err.Error(), "failed to create dynamic client") {
 			t.Fatalf("newClientWithRESTConfig() error = %v, want dynamic client creation error", err)
 		}
 	})
 
 	t.Run("creates client for namespaced store with discovered plural", func(t *testing.T) {
-		client, err := providerWithFakeDiscover("widgets").newClientWithRESTConfig(store, defaultRESTCfg(), "app-ns")
+		client, err := providerWithFakeDiscover("widgets").newClientWithRESTConfig(context.Background(), store, defaultRESTCfg(), "app-ns")
 		if err != nil {
 			t.Fatalf("newClientWithRESTConfig() unexpected error: %v", err)
 		}
@@ -450,7 +450,7 @@ func TestNewClientInternal(t *testing.T) {
 	})
 
 	t.Run("creates client for cluster store (empty namespace)", func(t *testing.T) {
-		client, err := providerWithFakeDiscover("widgets").newClientWithRESTConfig(store, defaultRESTCfg(), "")
+		client, err := providerWithFakeDiscover("widgets").newClientWithRESTConfig(context.Background(), store, defaultRESTCfg(), "")
 		if err != nil {
 			t.Fatalf("newClientWithRESTConfig() unexpected error: %v", err)
 		}
@@ -464,7 +464,7 @@ func TestNewClientInternal(t *testing.T) {
 	})
 
 	t.Run("plural from discovery is used in GVR", func(t *testing.T) {
-		client, err := providerWithFakeDiscover("mycustomwidgets").newClientWithRESTConfig(store, defaultRESTCfg(), "default")
+		client, err := providerWithFakeDiscover("mycustomwidgets").newClientWithRESTConfig(context.Background(), store, defaultRESTCfg(), "default")
 		if err != nil {
 			t.Fatalf("newClientWithRESTConfig() unexpected error: %v", err)
 		}
@@ -480,7 +480,7 @@ func TestNewClientInternal(t *testing.T) {
 			Resource:          widgetResource,
 			RemoteNamespace:   "remote-ns",
 		}
-		client, err := providerWithFakeDiscover("widgets").newClientWithRESTConfig(makeStoreWithCRDProvider(prov), defaultRESTCfg(), resolveCRDTargetNamespace(prov, "es-ns"))
+		client, err := providerWithFakeDiscover("widgets").newClientWithRESTConfig(context.Background(), makeStoreWithCRDProvider(prov), defaultRESTCfg(), resolveCRDTargetNamespace(prov, "es-ns"))
 		if err != nil {
 			t.Fatalf("newClientWithRESTConfig() unexpected error: %v", err)
 		}
@@ -490,7 +490,7 @@ func TestNewClientInternal(t *testing.T) {
 	})
 
 	t.Run("cluster-scoped discovery sets namespaced false on client", func(t *testing.T) {
-		client, err := providerWithFakeDiscover("clusterdbspecs", false).newClientWithRESTConfig(store, defaultRESTCfg(), "default")
+		client, err := providerWithFakeDiscover("clusterdbspecs", false).newClientWithRESTConfig(context.Background(), store, defaultRESTCfg(), "default")
 		if err != nil {
 			t.Fatalf("newClientWithRESTConfig() unexpected error: %v", err)
 		}
@@ -628,7 +628,7 @@ func TestImpersonationWiring(t *testing.T) {
 				UserName: "system:serviceaccount:default:remote-reader",
 			},
 		}
-		client, err := p.newClientWithRESTConfig(store, cfg, "default")
+		client, err := p.newClientWithRESTConfig(context.Background(), store, cfg, "default")
 		if err != nil {
 			t.Fatalf("newClientWithRESTConfig() unexpected error: %v", err)
 		}
