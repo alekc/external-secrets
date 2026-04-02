@@ -692,6 +692,22 @@ func TestWhitelistNamespaceField(t *testing.T) {
 			ref:        nsRef("ns1/item-a"),
 			wantErrMsg: "invalid whitelist namespace regex",
 		},
+		{
+			name: "namespace rule does not match cluster-scoped object",
+			makeClient: func() *Client {
+				clusterObj := makeWidgetObject("item-a", "", map[string]any{"password": "pw1"})
+				return &Client{
+					store:      makeCRDTestStore(makeWhitelistRuleNS("^prod$", "")),
+					namespace:  "",
+					plural:     "widgets",
+					namespaced: false,
+					storeKind:  esv1.ClusterSecretStoreKind,
+					dynClient:  dynfake.NewSimpleDynamicClient(runtime.NewScheme(), clusterObj),
+				}
+			},
+			ref:        nsRef("item-a"),
+			wantErrMsg: "denied by whitelist",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

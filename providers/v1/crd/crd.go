@@ -324,8 +324,14 @@ func (c *Client) matchesWhitelistRule(objectName, namespace string, requestedKey
 			}
 		}
 
-		// Namespace check (ClusterSecretStore only, when both rule and object carry a namespace)
-		if rule.Namespace != "" && c.storeKind == esv1.ClusterSecretStoreKind && namespace != "" {
+		// Namespace check: only evaluated for ClusterSecretStore when the rule
+		// specifies a namespace pattern. Cluster-scoped objects (namespace=="")
+		// never match a namespace rule — the rule explicitly targets namespaced
+		// objects.
+		if rule.Namespace != "" && c.storeKind == esv1.ClusterSecretStoreKind {
+			if namespace == "" {
+				continue
+			}
 			re, err := regexp.Compile(rule.Namespace)
 			if err != nil {
 				return false, fmt.Errorf("crd: invalid whitelist namespace regex %q: %w", rule.Namespace, err)
