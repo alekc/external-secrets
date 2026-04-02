@@ -1,6 +1,6 @@
 ## Kubernetes CRD Provider
 
-External Secrets Operator can read data from arbitrary Kubernetes Custom Resources (CRDs) in the same cluster.
+External Secrets Operator can read data from arbitrary Kubernetes Custom Resources (CRDs) within the cluster or from remote clusters when configured. Remote-cluster access is covered in the [Remote cluster connection](#remote-cluster-connection-and-service-account-impersonation) section below.
 
 This provider is useful when secrets or secret-like values are already managed inside CRDs (i.e. by an operator) and you want to project them into regular Kubernetes Secrets.
 
