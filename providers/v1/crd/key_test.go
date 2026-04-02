@@ -39,6 +39,7 @@ func TestParseRemoteRefKey(t *testing.T) {
 		{name: "ClusterSecretStore namespace/name", storeKind: esv1.ClusterSecretStoreKind, key: "default/myobj", wantObj: "myobj", wantNS: strPtr("default")},
 		{name: "ClusterSecretStore empty namespace segment", storeKind: esv1.ClusterSecretStoreKind, key: "/obj", wantErrSubs: "namespace segment"},
 		{name: "ClusterSecretStore empty name segment", storeKind: esv1.ClusterSecretStoreKind, key: "ns/", wantErrSubs: "object name after '/'"},
+		{name: "ClusterSecretStore extra slash", storeKind: esv1.ClusterSecretStoreKind, key: "ns/foo/bar", wantErrSubs: "exactly one '/'"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

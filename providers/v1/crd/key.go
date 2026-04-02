@@ -55,6 +55,9 @@ func parseRemoteRefKey(storeKind, remoteKey string) (objectName string, keyNames
 		if name == "" {
 			return "", nil, fmt.Errorf("crd: invalid remoteRef.key %q: object name after '/' must not be empty", remoteKey)
 		}
+		if strings.Contains(name, "/") {
+			return "", nil, fmt.Errorf("crd: invalid remoteRef.key %q: must be in \"namespace/objectName\" form (exactly one '/')", remoteKey)
+		}
 		return name, &ns, nil
 	default:
 		return remoteKey, nil, nil

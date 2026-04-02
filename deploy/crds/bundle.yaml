@@ -3736,7 +3736,6 @@ spec:
                               type: string
                           type: object
                         remoteNamespace:
-                          default: default
                           description: |-
                             RemoteNamespace is the default namespace for namespaced API calls on SecretStore.
                             For ClusterSecretStore with a namespaced resource, when set it limits dataFrom
@@ -15983,7 +15982,6 @@ spec:
                               type: string
                           type: object
                         remoteNamespace:
-                          default: default
                           description: |-
                             RemoteNamespace is the default namespace for namespaced API calls on SecretStore.
                             For ClusterSecretStore with a namespaced resource, when set it limits dataFrom
