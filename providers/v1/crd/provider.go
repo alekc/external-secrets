@@ -60,6 +60,8 @@ func usesExplicitCRDConnection(prov *esv1.CRDProvider) bool {
 	return prov.Server.URL != ""
 }
 
+// resolveCRDTargetNamespace returns the namespace used for namespaced API calls.
+// It prefers remoteNamespace when set, otherwise falls back to the store namespace.
 func resolveCRDTargetNamespace(prov *esv1.CRDProvider, storeNamespace string) string {
 	if prov.RemoteNamespace != "" {
 		return prov.RemoteNamespace
@@ -133,6 +135,9 @@ func (p *Provider) NewClient(ctx context.Context, store esv1.GenericStore, kube 
 	return p.newClient(ctx, store, kube, ctrlCfg, clientset, namespace)
 }
 
+// newClient builds the CRD provider client for both legacy (in-cluster SA token)
+// and explicit (remote cluster) authentication modes. It resolves credentials,
+// optionally configures impersonation, and delegates to newClientWithRESTConfig.
 func (p *Provider) newClient(ctx context.Context, store esv1.GenericStore, kube kclient.Client, ctrlCfg *rest.Config, clientset kubernetes.Interface, namespace string) (esv1.SecretsClient, error) {
 	provSpec, err := getProvider(store)
 	if err != nil {
@@ -291,6 +296,8 @@ func discoverResourceFromCluster(cfg *rest.Config, res esv1.CRDProviderResource)
 	return "", false, fmt.Errorf("crd: kind %q not found in group/version %q", res.Kind, groupVersion)
 }
 
+// ensureResourceAccess performs a SelfSubjectAccessReview for "get" and "list"
+// verbs on the target resource, returning an error if either is denied.
 func ensureResourceAccess(ctx context.Context, cfg *rest.Config, res esv1.CRDProviderResource, plural, namespace string) error {
 	cs, err := kubernetes.NewForConfig(cfg)
 	if err != nil {
@@ -425,6 +432,8 @@ func (p *Provider) ValidateStore(store esv1.GenericStore) (admission.Warnings, e
 	return warnings, nil
 }
 
+// getProvider extracts the CRDProvider spec from a GenericStore, returning an
+// error if the store is nil or the CRD provider block is missing.
 func getProvider(store esv1.GenericStore) (*esv1.CRDProvider, error) {
 	if store == nil {
 		return nil, errMissingStore
