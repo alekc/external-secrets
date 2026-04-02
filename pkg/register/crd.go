@@ -1,3 +1,5 @@
+//go:build crd || all_providers
+
 /*
 Copyright © The ESO Authors
 
