@@ -176,6 +176,9 @@ func (p *Provider) newClient(ctx context.Context, store esv1.GenericStore, kube 
 	}
 
 	// Legacy mode: in-cluster API server + short-lived token for serviceAccountRef.
+	if provSpec.ServiceAccountRef == nil {
+		return nil, errMissingSA
+	}
 	saNamespace := resolveLegacySANamespace(storeKind, namespace, provSpec.ServiceAccountRef)
 	token, err := esutils.FetchServiceAccountToken(ctx, *provSpec.ServiceAccountRef, saNamespace)
 	if err != nil {

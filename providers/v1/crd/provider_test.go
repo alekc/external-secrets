@@ -410,6 +410,17 @@ func TestNewClientInternal(t *testing.T) {
 		}
 	})
 
+	t.Run("newClient returns errMissingSA when no serviceAccountRef in legacy mode", func(t *testing.T) {
+		legacyStore := makeStoreWithCRDProvider(&esv1.CRDProvider{
+			// No Server/Auth/AuthRef → legacy mode; no ServiceAccountRef → should error.
+			Resource: widgetResource,
+		})
+		_, err := providerWithFakeDiscover("widgets").newClient(ctx, legacyStore, nil, defaultRESTCfg(), nil, "default")
+		if !errors.Is(err, errMissingSA) {
+			t.Fatalf("newClient() error = %v, want %v", err, errMissingSA)
+		}
+	})
+
 	t.Run("newClientWithRESTConfig returns getProvider error on nil store", func(t *testing.T) {
 		_, err := providerWithFakeDiscover("widgets").newClientWithRESTConfig(context.Background(), nil, defaultRESTCfg(), "default")
 		if !errors.Is(err, errMissingStore) {
