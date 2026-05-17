@@ -434,6 +434,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ct
 					r.markAsFailed(msgErrorDeleteSecret, err, externalSecret, syncCallsError.With(resourceLabels), esv1.ConditionReasonSecretSyncedError)
 					return ctrl.Result{}, err
 				}
+				log.Info("deleted target secret", "secret", secretName, "namespace", existingSecret.Namespace, "reason", "DeletionPolicy=Delete and provider returned no data")
 				r.recorder.Event(externalSecret, v1.EventTypeNormal, esv1.ReasonDeleted, eventDeleted)
 			}
 
@@ -507,7 +508,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ct
 	case esv1.CreatePolicyMerge:
 		// update the secret, if it exists
 		if existingSecret.UID != "" {
-			err = r.updateSecret(ctx, existingSecret, mutationFunc, externalSecret, secretName)
+			err = r.updateSecret(ctx, log, existingSecret, mutationFunc, externalSecret, secretName)
 		} else {
 			// if the secret does not exist, we wait until the next refresh interval
 			// rather than returning an error which would requeue immediately
@@ -520,12 +521,12 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ct
 			err = r.createSecret(ctx, mutationFunc, externalSecret, secretName)
 		} else {
 			// if the secret exists, we should update it
-			err = r.updateSecret(ctx, existingSecret, mutationFunc, externalSecret, secretName)
+			err = r.updateSecret(ctx, log, existingSecret, mutationFunc, externalSecret, secretName)
 		}
 	case esv1.CreatePolicyOwner:
 		// we may have orphaned secrets to clean up,
 		// for example, if the target secret name was changed
-		err = r.deleteOrphanedSecrets(ctx, externalSecret, secretName)
+		err = r.deleteOrphanedSecrets(ctx, log, externalSecret, secretName)
 		if err != nil {
 			r.markAsFailed(msgErrorDeleteOrphaned, err, externalSecret, syncCallsError.With(resourceLabels), esv1.ConditionReasonSecretSyncedError)
 			return ctrl.Result{}, err
@@ -536,7 +537,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ct
 			err = r.createSecret(ctx, mutationFunc, externalSecret, secretName)
 		} else {
 			// if the secret exists, we should update it
-			err = r.updateSecret(ctx, existingSecret, mutationFunc, externalSecret, secretName)
+			err = r.updateSecret(ctx, log, existingSecret, mutationFunc, externalSecret, secretName)
 		}
 	}
 	if err != nil {
@@ -860,13 +861,15 @@ func (r *Reconciler) cleanupManagedSecrets(ctx context.Context, log logr.Logger,
 		if err := r.Delete(ctx, &secret); err != nil && !apierrors.IsNotFound(err) {
 			return err
 		}
-		log.V(1).Info("deleted managed secret", "secret", secretName)
+		// Promoted from V(1) to Info for issue #2498 — operators alert on
+		// secret deletion and the previous debug level was hidden by default.
+		log.Info("deleted managed secret", "secret", secretName, "namespace", externalSecret.Namespace)
 	}
 
 	return nil
 }
 
-func (r *Reconciler) deleteOrphanedSecrets(ctx context.Context, externalSecret *esv1.ExternalSecret, secretName string) error {
+func (r *Reconciler) deleteOrphanedSecrets(ctx context.Context, log logr.Logger, externalSecret *esv1.ExternalSecret, secretName string) error {
 	ownerLabel := esutils.ObjectHash(fmt.Sprintf("%v/%v", externalSecret.Namespace, externalSecret.Name))
 
 	// we use a PartialObjectMetadataList to avoid loading the full secret objects
@@ -890,6 +893,8 @@ func (r *Reconciler) deleteOrphanedSecrets(ctx context.Context, externalSecret *
 			if err != nil && !apierrors.IsNotFound(err) {
 				return err
 			}
+			// Issue #2498 — log orphaned-secret deletes at Info so operators can alert.
+			log.Info("deleted orphaned secret", "secret", secretPartial.GetName(), "namespace", externalSecret.Namespace)
 			r.recorder.Event(externalSecret, v1.EventTypeNormal, esv1.ReasonDeleted, eventDeletedOrphaned)
 		}
 	}
@@ -928,7 +933,7 @@ func (r *Reconciler) createSecret(ctx context.Context, mutationFunc func(secret 
 	return nil
 }
 
-func (r *Reconciler) updateSecret(ctx context.Context, existingSecret *v1.Secret, mutationFunc func(secret *v1.Secret) error, es *esv1.ExternalSecret, secretName string) error {
+func (r *Reconciler) updateSecret(ctx context.Context, log logr.Logger, existingSecret *v1.Secret, mutationFunc func(secret *v1.Secret) error, es *esv1.ExternalSecret, secretName string) error {
 	fqdn := fqdnFor(es.Name)
 
 	// fail if the secret does not exist
@@ -998,6 +1003,18 @@ func (r *Reconciler) updateSecret(ctx context.Context, existingSecret *v1.Secret
 			return err
 		}
 		return fmt.Errorf(errUpdate, updatedSecret.Name, err)
+	}
+
+	// Log when any data key was removed or had its value emptied. Issue #2498
+	// — operators alert on these specific mutations. Only key names are logged;
+	// values are deliberately omitted to avoid leaking secret data.
+	if removed, emptied := diffSecretDataKeys(existingSecret.Data, updatedSecret.Data); len(removed) > 0 || len(emptied) > 0 {
+		log.Info("secret data keys removed or emptied",
+			"secret", secretName,
+			"namespace", existingSecret.Namespace,
+			"removed", removed,
+			"emptied", emptied,
+		)
 	}
 
 	r.recorder.Event(es, v1.EventTypeNormal, esv1.ReasonUpdated, eventUpdated)
@@ -1406,4 +1423,33 @@ func (r *Reconciler) findObjectsForSecret(ctx context.Context, secret client.Obj
 		}
 	}
 	return requests
+}
+
+// diffSecretDataKeys reports which keys in a Kubernetes Secret's Data field were
+// removed or had their value emptied when the existing Data is updated to the
+// new one. Used by updateSecret to log observable mutations for issue #2498.
+//
+// "removed" — key was present in existing, absent from updated.
+// "emptied" — key was present in both, but the value went from non-empty bytes
+//
+//	to zero-length bytes.
+//
+// Keys with unchanged values, newly added keys, and value-only changes (non-empty
+// → different non-empty) are intentionally NOT reported here: they are not the
+// mutations the issue tracks, and including them would be noisy on every refresh.
+// Values are never returned — only key names — so the result is safe to log.
+func diffSecretDataKeys(existing, updated map[string][]byte) (removed, emptied []string) {
+	for k, oldVal := range existing {
+		newVal, present := updated[k]
+		if !present {
+			removed = append(removed, k)
+			continue
+		}
+		if len(oldVal) > 0 && len(newVal) == 0 {
+			emptied = append(emptied, k)
+		}
+	}
+	slices.Sort(removed)
+	slices.Sort(emptied)
+	return removed, emptied
 }
